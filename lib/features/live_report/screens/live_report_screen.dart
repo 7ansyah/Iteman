@@ -336,7 +336,7 @@ class _LiveReportScreenState extends State<LiveReportScreen> {
             GestureDetector(
               onTap: () => _showReportDetail(context, data, docId),
               child: CachedNetworkImage(
-                mediaType == 'video'
+                mediaType == 'video',
                 imageUrl: data['imageUrl'],
                 width: double.infinity,
                 height: 200,
