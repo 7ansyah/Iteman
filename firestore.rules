@@ -1,0 +1,300 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAppAdmin() {
+      return isSignedIn() &&
+        (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        );
+    }
+
+    function isCommunityOwner(communityId) {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/communities/$(communityId)).data.ownerId == request.auth.uid;
+    }
+
+    function isCommunityMember(communityId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/communities/$(communityId)/members/$(request.auth.uid));
+    }
+
+    function communityRole(communityId) {
+      return isCommunityMember(communityId)
+        ? get(/databases/$(database)/documents/communities/$(communityId)/members/$(request.auth.uid)).data.role
+        : '';
+    }
+
+    function isCommunityAdmin(communityId) {
+      return isCommunityOwner(communityId) ||
+        communityRole(communityId) == 'admin';
+    }
+
+    function canModerateCommunity(communityId) {
+      return isCommunityAdmin(communityId) ||
+        communityRole(communityId) == 'moderator';
+    }
+
+    function communityJoinPolicy(communityId) {
+      return get(/databases/$(database)/documents/communities/$(communityId)).data.joinPolicy == null
+        ? 'open'
+        : get(/databases/$(database)/documents/communities/$(communityId)).data.joinPolicy;
+    }
+
+    function isVerificationOnlyUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'isVerified',
+        'verificationStatus',
+        'verifiedAt',
+        'verifiedBy'
+      ]);
+    }
+
+    match /spots/{spotId} {
+      allow read: if true;
+
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid;
+
+      allow update: if isSignedIn() && (
+        request.auth.uid == resource.data.userId ||
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['likes', 'total like'])
+      );
+
+      allow delete: if isSignedIn()
+        && request.auth.uid == resource.data.userId;
+
+      match /likes/{likeId} {
+        allow read: if true;
+
+        allow create: if isSignedIn()
+          && request.auth.uid == likeId
+          && request.resource.data.userId == request.auth.uid;
+
+        allow delete: if isSignedIn()
+          && request.auth.uid == likeId;
+      }
+
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isSignedIn();
+        allow update: if isSignedIn();
+        allow delete: if isSignedIn()
+          && request.auth.uid == resource.data.userId;
+      }
+
+      match /reports/{reportId} {
+        allow read: if true;
+        allow create: if isSignedIn();
+      }
+    }
+
+    match /posts/{postId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn()
+        && request.auth.uid == resource.data.userId;
+    }
+
+    match /users/{userId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update: if isSignedIn()
+        && request.auth.uid == userId;
+
+      match /followers/{followerId} {
+        allow read: if true;
+        allow write: if isSignedIn();
+      }
+
+      match /following/{followingId} {
+        allow read: if true;
+        allow write: if isSignedIn();
+      }
+
+      match /notifications/{notifId} {
+        allow read: if isSignedIn()
+          && request.auth.uid == userId;
+        allow write: if isSignedIn();
+      }
+
+      match /saved_spots/{spotId} {
+        allow read, write: if isSignedIn()
+          && request.auth.uid == userId;
+      }
+    }
+
+    match /logbook/{logId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn()
+        && request.auth.uid == resource.data.userId;
+    }
+
+    match /mancing_bareng/{eventId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn()
+        && request.auth.uid == resource.data.userId;
+    }
+
+    match /live_reports/{reportId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow delete: if isSignedIn()
+        && request.auth.uid == resource.data.userId;
+    }
+
+    match /events/{eventId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn()
+        && request.auth.uid == resource.data.userId;
+    }
+
+    match /lapak/{lapakId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn()
+        && request.auth.uid == resource.data.userId;
+    }
+
+    match /premium_codes/{codeId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /communities/{communityId} {
+      allow read: if true;
+
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid;
+
+      allow update: if isCommunityOwner(communityId) ||
+        (isAppAdmin() && isVerificationOnlyUpdate());
+
+      allow delete: if isCommunityOwner(communityId);
+
+      match /members/{memberId} {
+        allow read: if true;
+
+        allow create: if isSignedIn() && (
+          isCommunityAdmin(communityId) ||
+          canModerateCommunity(communityId) ||
+          (
+            request.auth.uid == memberId &&
+            communityJoinPolicy(communityId) == 'open' &&
+            request.resource.data.role == 'member'
+          )
+        );
+
+        allow update: if isSignedIn() && (
+          isCommunityAdmin(communityId) ||
+          (
+            request.auth.uid == memberId &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['userName', 'userPhotoUrl'])
+          )
+        );
+
+        allow delete: if isSignedIn() && (
+          request.auth.uid == memberId ||
+          isCommunityAdmin(communityId)
+        );
+      }
+
+      match /join_requests/{requestUserId} {
+        allow read: if isSignedIn() && (
+          request.auth.uid == requestUserId ||
+          canModerateCommunity(communityId)
+        );
+
+        allow create: if isSignedIn()
+          && request.auth.uid == requestUserId
+          && communityJoinPolicy(communityId) == 'approval'
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.status == 'pending';
+
+        allow update: if isSignedIn() && (
+          (
+            request.auth.uid == requestUserId &&
+            resource.data.status == 'rejected' &&
+            request.resource.data.userId == request.auth.uid &&
+            request.resource.data.status == 'pending'
+          ) ||
+          canModerateCommunity(communityId)
+        );
+
+        allow delete: if canModerateCommunity(communityId);
+      }
+
+      match /posts/{postId} {
+        allow read: if true;
+
+        allow create: if isCommunityMember(communityId);
+
+        allow update: if isSignedIn() && (
+          request.auth.uid == resource.data.userId ||
+          canModerateCommunity(communityId)
+        );
+
+        allow delete: if isSignedIn() && (
+          request.auth.uid == resource.data.userId ||
+          canModerateCommunity(communityId)
+        );
+
+        match /likes/{likeId} {
+          allow read: if true;
+
+          allow create, delete: if isSignedIn()
+            && request.auth.uid == likeId;
+        }
+
+        match /comments/{commentId} {
+          allow read: if true;
+
+          allow create: if isCommunityMember(communityId);
+
+          allow update, delete: if isSignedIn() && (
+            request.auth.uid == resource.data.userId ||
+            canModerateCommunity(communityId)
+          );
+        }
+      }
+
+      match /events/{eventId} {
+        allow read: if true;
+
+        allow create: if isCommunityMember(communityId);
+
+        allow update, delete: if isSignedIn() && (
+          request.auth.uid == resource.data.userId ||
+          canModerateCommunity(communityId)
+        );
+      }
+    }
+
+    match /community_verification_requests/{communityId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && request.resource.data.requestedBy == request.auth.uid;
+
+      allow update: if isAppAdmin() || (
+        isSignedIn()
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.status == 'pending'
+      );
+
+      allow delete: if false;
+    }
+  }
+}
