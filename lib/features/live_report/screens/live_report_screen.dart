@@ -336,6 +336,7 @@ class _LiveReportScreenState extends State<LiveReportScreen> {
             GestureDetector(
               onTap: () => _showReportDetail(context, data, docId),
               child: CachedNetworkImage(
+                mediaType == 'video'
                 imageUrl: data['imageUrl'],
                 width: double.infinity,
                 height: 200,
@@ -813,7 +814,7 @@ class _BuatReportSheetState extends State<_BuatReportSheet> {
 
             // Foto
             GestureDetector(
-              onTap: _pickImage,
+              onTap: _pickMedia
               child: Container(
                 height: 120,
                 decoration: BoxDecoration(
@@ -824,11 +825,7 @@ class _BuatReportSheetState extends State<_BuatReportSheet> {
                 child: _imageFile != null
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(12),
-                        child: Image.file(
-                          _imageFile!,
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                        ),
+                        child: MediaPreviewWidget(file: _imageFile!, isVideo: _isVideo, height: 160),
                       )
                     : const Column(
                         mainAxisAlignment: MainAxisAlignment.center,
