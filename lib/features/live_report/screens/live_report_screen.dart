@@ -721,9 +721,11 @@ class _BuatReportSheetState extends State<_BuatReportSheet> {
 
     try {
       final user = FirebaseAuth.instance.currentUser!;
-      String imageUrl = '';
+      String imageUrl = '', videoUrl = '';
       if (_imageFile != null) {
-        imageUrl = await _uploadImage(_imageFile!);
+        final r = await _uploadMedia(_imageFile!);
+        imageUrl = r['imageUrl'] ?? '';
+        videoUrl = r['videoUrl'] ?? '';
       }
 
       final now = DateTime.now();
